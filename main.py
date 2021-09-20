@@ -1,50 +1,54 @@
 import gc
 
 import neopixel
-from machine import PWM, Pin
 import uasyncio as asyncio
-from button import PushButton
+from machine import PWM, Pin
 
+from button import PushButton
 
 gc.collect()
 
-EN_L = Pin(27, Pin.OUT)
-EN_R = Pin(25, Pin.OUT)
-PWM_L = Pin(32, Pin.OUT)
-PWM_R = Pin(26, Pin.OUT)
-BUTTON_DOWN = Pin(18, Pin.IN, Pin.PULL_UP)
-BUTTON_UP = Pin(19, Pin.IN, Pin.PULL_UP)
+EN_PINS = (
+    Pin(27, Pin.OUT),
+    Pin(25, Pin.OUT),
+)
+PWM_PINS = (
+    Pin(32, Pin.OUT),
+    Pin(26, Pin.OUT),
+)
+PWMS = [PWM(pin, freq=20000, duty=0) for pin in PWM_PINS]
+
+BUTTON_PINS = (
+    Pin(18, Pin.IN, Pin.PULL_UP),  # Down
+    Pin(19, Pin.IN, Pin.PULL_UP),  # Up
+)
+
 
 PIXEL_PIN = Pin(33, Pin.OUT)
 PIXEL = neopixel.NeoPixel(PIXEL_PIN, 1)
 
+current_duty = 400
 
-def move(up=False, speed=100):
-    if up:
-        PWM_L.on()
-        PWM_R.off()
-    else:
-        PWM_L.off()
-        PWM_R.on()
+
+def move(up=False):
+    for i, pwm in enumerate(PWMS):
+        pwm.duty((int(up) ^ i) * current_duty)
 
 
 def stop():
-    PWM_L.off()
-    PWM_R.off()
+    for pwm in PWMS:
+        pwm.duty(0)
 
 
 async def main():
     # Enable motors
-    EN_L.on()
-    EN_R.on()
+    for pin in EN_PINS:
+        pin.on()
 
-    button_down = PushButton(BUTTON_DOWN)
-    button_down.press_func(move, (False,))
-    button_down.release_func(stop)
-
-    button_up = PushButton(BUTTON_UP)
-    button_up.press_func(move, (True,))
-    button_up.release_func(stop)
+    for i, button_pin in enumerate(BUTTON_PINS):
+        button = PushButton(button_pin)
+        button.press_func(move, (i,))
+        button.release_func(stop)
 
     # Keep alive
     while True:
