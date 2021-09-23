@@ -26,8 +26,6 @@ BUTTON_PINS = (
 PIXEL_PIN = Pin(33, Pin.OUT)
 PIXEL = neopixel.NeoPixel(PIXEL_PIN, 1)
 
-current_duty = 1000
-
 
 class Button:
     def __init__(self, pin, on_press, on_release, debounce_ms=50, off_state=None):
@@ -61,10 +59,15 @@ class Button:
             await asyncio.sleep_ms(self.debounce_ms)
 
 
+motor_lock = asyncio.Lock()
+
+
 async def move(up=False):
-    print("going {}".format(up))
-    for i, pwm in enumerate(PWMS):
-        pwm.duty((int(up) ^ i) * current_duty)
+    await motor_lock.acquire()
+    for duty in range(400, 950, 50):
+        PWMS[int(up)].duty(duty)
+        print("moving {} @ {}".format("up" if up else "down", duty))
+        await asyncio.sleep_ms(200)
 
 
 async def down():
@@ -76,7 +79,8 @@ async def up():
 
 
 async def stop():
-    print("stop")
+    motor_lock.release()
+    print("stopping")
     for pwm in PWMS:
         pwm.duty(0)
 
