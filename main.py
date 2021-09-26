@@ -1,7 +1,4 @@
 import gc
-import time
-
-import neopixel
 import uasyncio as asyncio
 from machine import PWM, Pin
 
@@ -15,16 +12,13 @@ PWM_PINS = (
     Pin(32, Pin.OUT),
     Pin(26, Pin.OUT),
 )
+
 PWMS = [PWM(pin, freq=20000, duty=0) for pin in PWM_PINS]
 
 BUTTON_PINS = (
     Pin(18, Pin.IN, Pin.PULL_UP),  # Down
     Pin(19, Pin.IN, Pin.PULL_UP),  # Up
 )
-
-
-PIXEL_PIN = Pin(33, Pin.OUT)
-PIXEL = neopixel.NeoPixel(PIXEL_PIN, 1)
 
 
 class Button:
@@ -59,30 +53,46 @@ class Button:
             await asyncio.sleep_ms(self.debounce_ms)
 
 
-motor_lock = asyncio.Lock()
+class Motor:
+    def __init__(self):
+        self.direction = 0
+        self.should_stop = asyncio.Event()
+        self.moving_task = None
+        asyncio.create_task(self.stop())
 
+    async def move(self, up=False):
+        self.moving_task = asyncio.current_task()
+        if self.direction == 0:
+            self.direction = 1 if up else -1
+            for duty in range(400, 950, 50):
+                PWMS[int(up)].duty(duty)
+                print("moving {} @ {}".format("up" if up else "down", duty))
+                await asyncio.sleep_ms(100)
 
-async def move(up=False):
-    await motor_lock.acquire()
-    for duty in range(400, 950, 50):
-        PWMS[int(up)].duty(duty)
-        print("moving {} @ {}".format("up" if up else "down", duty))
-        await asyncio.sleep_ms(200)
+    async def down(self):
+        await self.move(up=False)
 
+    async def up(self):
+        await self.move(up=True)
 
-async def down():
-    await move(up=False)
+    async def stop(self):
+        while True:
+            await self.should_stop.wait()
+            print("stop")
+            for pwm in PWMS:
+                pwm.duty(0)
+            self.direction = 0
+            if self.moving_task:
+                self.moving_task.cancel()
+            self.should_stop.clear()
 
+    async def stop_down(self):
+        if self.direction == -1:
+            self.should_stop.set()
 
-async def up():
-    await move(up=True)
-
-
-async def stop():
-    motor_lock.release()
-    print("stopping")
-    for pwm in PWMS:
-        pwm.duty(0)
+    async def stop_up(self):
+        if self.direction == 1:
+            self.should_stop.set()
 
 
 async def main():
@@ -90,8 +100,9 @@ async def main():
     for pin in EN_PINS:
         pin.on()
 
-    Button(BUTTON_PINS[0], on_press=down, on_release=stop, off_state=True)
-    Button(BUTTON_PINS[1], on_press=up, on_release=stop, off_state=True)
+    motor = Motor()
+    Button(BUTTON_PINS[0], on_press=motor.down, on_release=motor.stop_down, off_state=True)
+    Button(BUTTON_PINS[1], on_press=motor.up, on_release=motor.stop_up, off_state=True)
 
     # Keep alive
     while True:
