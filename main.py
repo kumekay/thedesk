@@ -1,8 +1,11 @@
 import gc
 import uasyncio as asyncio
-from machine import PWM, Pin
+from machine import PWM, Pin, I2C
+from lib import VL53L0X
 
 gc.collect()
+
+i2c = I2C(1)
 
 EN_PINS = (
     Pin(27, Pin.OUT),
@@ -95,6 +98,18 @@ class Motor:
             self.should_stop.set()
 
 
+tof = VL53L0X.VL53L0X(i2c)
+tof.set_Vcsel_pulse_period(tof.vcsel_period_type[0], 18)
+tof.set_Vcsel_pulse_period(tof.vcsel_period_type[1], 14)
+
+
+async def read_distance():
+    tof.start()
+    tof.read()
+    print(tof.read())
+    tof.stop()
+
+
 async def main():
     # Enable motors
     for pin in EN_PINS:
@@ -107,6 +122,7 @@ async def main():
     # Keep alive
     while True:
         await asyncio.sleep(1)
+        await read_distance()
 
 
 try:
