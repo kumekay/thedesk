@@ -64,10 +64,9 @@ class Motor:
         self.moving_task = asyncio.current_task()
         if self.direction == 0:
             self.direction = 1 if up else -1
-            for duty in range(400, 950, 50):
+            for duty in range(400, 800, 20):
                 PWMS[int(up)].duty(duty)
-                print("moving {} @ {}".format("up" if up else "down", duty))
-                await asyncio.sleep_ms(100)
+                await asyncio.sleep_ms(50)
 
     async def down(self):
         await self.move(up=False)
@@ -78,7 +77,6 @@ class Motor:
     async def stop(self):
         while True:
             await self.should_stop.wait()
-            print("stop")
             for pwm in PWMS:
                 pwm.duty(0)
             self.direction = 0
